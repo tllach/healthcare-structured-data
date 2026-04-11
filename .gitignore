@@ -23,6 +23,14 @@ build/
 !.env.example
 !.env.local.example
 
+# Supabase
+supabase/
+supabase.toml
+.agents/
+.claude/
+
+
+
 # IDE / OS
 .idea/
 .vscode/

@@ -29,8 +29,6 @@ supabase.toml
 .agents/
 .claude/
 
-
-
 # IDE / OS
 .idea/
 .vscode/
@@ -49,6 +47,7 @@ coverage/
 htmlcov/
 .pytest_cache/
 .mypy_cache/
+files_to_check/
 
 # Misc
 *.tsbuildinfo

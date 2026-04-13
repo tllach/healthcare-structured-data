@@ -120,10 +120,7 @@ def health() -> dict[str, str]:
 
 
 @app.post("/extract", response_model=ExtractionResponse)
-async def extract_document(
-    file: UploadFile = File(...),
-    extractor: DocumentExtractor = Depends(get_extractor),
-) -> ExtractionResponse:
+async def extract_document( file: UploadFile = File(...), extractor: DocumentExtractor = Depends(get_extractor), ) -> ExtractionResponse:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing file name.")
 
@@ -170,10 +167,7 @@ async def extract_document(
 
 
 @app.post("/save", response_model=ExtractionRecordOut)
-def save_extraction(
-    body: ExtractionRecordIn,
-    supabase: Client = Depends(get_supabase),
-) -> ExtractionRecordOut:
+def save_extraction( body: ExtractionRecordIn, supabase: Client = Depends(get_supabase) ) -> ExtractionRecordOut:
     if body.status not in ("pending", "reviewed", "submitted"):
         raise HTTPException(
             status_code=400,

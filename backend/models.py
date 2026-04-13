@@ -159,9 +159,11 @@ class ExtractionRecordIn(BaseModel):
 class ExtractionRecordOut(BaseModel):
     id: str
     file_name: str
+    file_url: str | None = None
     raw_extracted: dict[str, Any]
     final_submitted: dict[str, Any] | None
     corrections: dict[str, Any]
+    status: str = "pending"
     created_at: datetime
 
 

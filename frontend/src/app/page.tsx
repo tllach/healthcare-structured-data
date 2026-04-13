@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { AlertCircle, FileStack, Sparkles, UserCheck } from "lucide-react";
+import { SubmittedBanner } from "@/components/SubmittedBanner";
 import { UploadZone } from "@/components/UploadZone";
 import { Button, Spinner } from "@/components/ui";
 import * as api from "@/lib/api";
@@ -11,6 +12,14 @@ import * as api from "@/lib/api";
 type PageState = "idle" | "extracting" | "error";
 
 export default function HomePage() {
+  return (
+    <Suspense fallback={null}>
+      <HomePageContent />
+    </Suspense>
+  );
+}
+
+function HomePageContent() {
   const router = useRouter();
   const [state, setState] = useState<PageState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -62,6 +71,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-5xl px-4 pb-16 pt-10 sm:px-6">
+        <SubmittedBanner />
         <section className="mb-10 text-center">
           <h1 className="text-3xl font-bold text-gray-900">
             Extract. Review. Submit.

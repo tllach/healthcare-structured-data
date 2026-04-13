@@ -58,6 +58,13 @@ export async function saveExtraction(
 }
 
 export async function getAccuracyStats(): Promise<AccuracyStats[]> {
-  const { data } = await api.get<AccuracyStats[]>("/accuracy/stats");
+  const { data } = await api.get<AccuracyStats[]>("/accuracy");
+  return data;
+}
+
+export async function getRecentSubmissions(): Promise<ExtractionRecord[]> {
+  const { data } = await api.get<ExtractionRecord[]>("/submissions", {
+    params: { limit: 20 },
+  });
   return data;
 }

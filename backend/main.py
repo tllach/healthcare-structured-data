@@ -236,3 +236,36 @@ def accuracy_stats(supabase: Client = Depends(get_supabase)) -> list[AccuracySta
 
     rows = getattr(res, "data", None) or []
     return [_to_accuracy_row(r) for r in rows if isinstance(r, dict)]
+
+
+@app.get("/submissions", response_model=list[ExtractionRecordOut])
+def list_submissions(
+    limit: int = 20,
+    supabase: Client = Depends(get_supabase),
+) -> list[ExtractionRecordOut]:
+    limit = min(max(limit, 1), 100)
+    try:
+        res = (
+            supabase.table("extractions")
+            .select("*")
+            .order("created_at", desc=True)
+            .limit(limit)
+            .execute()
+        )
+    except Exception as e:
+        logger.exception("Supabase extractions list failed")
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to load submissions.",
+        ) from e
+
+    rows = getattr(res, "data", None) or []
+    out: list[ExtractionRecordOut] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        try:
+            out.append(ExtractionRecordOut.model_validate(r))
+        except ValidationError:
+            logger.warning("Skipping invalid extraction row: %s", r.get("id"))
+    return out

@@ -136,6 +136,31 @@ export interface ExtractionResult {
   document_type: string
 }
 
+export interface ExtracionResponse {
+  result: ExtractionResult
+  processing_time_ms: number
+  document_type: string
+}
+
+
+export interface ExtractionRecordIn{
+  file_name: string
+  raw_extracted: Record<string, any>
+  final_submitted: Record<string, any> | null
+  corrections: Record<string, any>
+  file_url: string | null
+  status: string
+}
+
+export interface ExtractionRecordOut{
+  id: string
+  file_name: string
+  raw_extracted: Record<string, any>
+  final_submitted: Record<string, any> | null
+  corrections: Record<string, any>
+  created_at: string
+}
+
 export type ConfidenceLevel = 'high' | 'medium' | 'low'
 
 export interface ExtractionRecord {

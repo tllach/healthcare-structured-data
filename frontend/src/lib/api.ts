@@ -53,7 +53,7 @@ export async function extractDocument(
 export async function saveExtraction(
   payload: Omit<ExtractionRecord, "id" | "created_at">
 ): Promise<ExtractionRecord> {
-  const { data } = await api.post<ExtractionRecord>("/extractions", payload);
+  const { data } = await api.post<ExtractionRecord>("/save", payload);
   return data;
 }
 

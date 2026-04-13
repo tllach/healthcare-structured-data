@@ -7,6 +7,16 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { useRouter } from "next/navigation";
 
 import { Badge, Button } from "@/components/ui";
@@ -117,12 +127,12 @@ export default function AccuracyPage() {
     setLoadState("loading");
     setErrorMessage("");
     try {
-      const [accuracyRows, submissions] = await Promise.all([
+      const [accuracyRows, extraction] = await Promise.all([
         api.getAccuracyStats(),
         api.getRecentSubmissions(),
       ]);
       setStats(accuracyRows);
-      setRecent(submissions);
+      setRecent(extraction);  
       setLastUpdated(new Date());
       setLoadState("ready");
     } catch (e) {
@@ -169,6 +179,21 @@ export default function AccuracyPage() {
     );
 
     return { totalSubmissions, overallAccuracy, best, worst };
+  }, [stats]);
+
+  const chartData = useMemo(() => {
+    return [...stats]
+      .sort((a, b) => b.accuracy_pct - a.accuracy_pct)
+      .map((s) => ({
+        name: formatFieldKey(s.field_key),
+        accuracy: s.accuracy_pct,
+        fill:
+          s.accuracy_pct >= 80
+            ? "#22c55e"
+            : s.accuracy_pct >= 60
+              ? "#eab308"
+              : "#ef4444",
+      }));
   }, [stats]);
 
   const overallIconColor =
@@ -389,6 +414,75 @@ export default function AccuracyPage() {
           </div>
         </section>
 
+        {stats.length >= 2 ? (
+          <section className="mb-10">
+            <h2 className="mb-4 font-semibold text-gray-900">
+              Accuracy by Section
+            </h2>
+            <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex flex-wrap gap-4 text-xs text-gray-500">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-green-500" aria-hidden>
+                    ●
+                  </span>
+                  ≥80% Good
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-yellow-500" aria-hidden>
+                    ●
+                  </span>
+                  60–79% Review
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-red-500" aria-hidden>
+                    ●
+                  </span>
+                  &lt;60% Poor
+                </span>
+              </div>
+              <ResponsiveContainer width="100%" height={320}>
+                <BarChart
+                  data={chartData}
+                  layout="vertical"
+                  margin={{ top: 4, right: 16, left: 0, bottom: 4 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    domain={[0, 100]}
+                    tickFormatter={(v: number) => `${v}%`}
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={160}
+                    tick={{ fontSize: 12, fill: "#6b7280" }}
+                  />
+                  <Tooltip
+                    formatter={(value) => [
+                      `${Number(value)}%`,
+                      "Accuracy",
+                    ]}
+                  />
+                  <Bar
+                    dataKey="accuracy"
+                    radius={[0, 4, 4, 0]}
+                    barSize={20}
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+        ) : null}
+
         <section className="mb-10">
           <h2 className="mb-4 font-semibold text-gray-900">
             Accuracy by Field
@@ -477,8 +571,8 @@ export default function AccuracyPage() {
                 </thead>
                 <tbody>
                   {recent.map((rec) => {
-                    const docType =
-                      rec.raw_extracted?.document_type ?? "unknown";
+                    console.log(rec);
+                    const docType = rec.document_type;
                     const n = countCorrectionKeys(
                       rec.corrections as Record<string, unknown>
                     );

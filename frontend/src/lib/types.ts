@@ -172,6 +172,7 @@ export interface ExtractionRecord {
   corrections: Record<string, { original: unknown; corrected: unknown }>
   status: 'pending' | 'reviewed' | 'submitted'
   created_at: string
+  document_type: string
 }
 
 export interface AccuracyStats {

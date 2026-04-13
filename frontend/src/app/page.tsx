@@ -52,6 +52,7 @@ function HomePageContent() {
       const result = await api.extractDocument(file);
       sessionStorage.setItem("extractionResult", JSON.stringify(result));
       sessionStorage.setItem("extractionFileName", file.name);
+      sessionStorage.setItem("extractionDocumentType", result.document_type);
       router.push("/review");
     } catch (err) {
       setState("error");

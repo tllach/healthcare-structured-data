@@ -18,6 +18,7 @@ type ExtractionData = {
 const STORAGE_KEYS = {
   RESULT: "extractionResult",
   FILE_NAME: "extractionFileName",
+  DOCUMENT_TYPE: "extractionDocumentType",
 };
 
 export default function ReviewPage() {
@@ -26,6 +27,7 @@ export default function ReviewPage() {
   const [status, setStatus] = useState<PageStatus>("loading");
   const [data, setData] = useState<ExtractionData | null>(null);
   const [fileName, setFileName] = useState<string>("");
+  const [documentType, setDocumentType] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
   useEffect(() => {
@@ -35,6 +37,7 @@ export default function ReviewPage() {
   const loadSessionData = () => {
     const raw = sessionStorage.getItem(STORAGE_KEYS.RESULT);
     const name = sessionStorage.getItem(STORAGE_KEYS.FILE_NAME);
+    const documentType = sessionStorage.getItem(STORAGE_KEYS.DOCUMENT_TYPE);
 
     if (!raw || !name) {
       router.push("/");
@@ -46,6 +49,7 @@ export default function ReviewPage() {
 
       setData(parsed);
       setFileName(name);
+      setDocumentType(documentType || "unknown");
       setStatus("ready");
     } catch {
       handleError("Could not read extraction results. The data may be corrupted.");
@@ -66,6 +70,7 @@ export default function ReviewPage() {
     try {
       await api.saveExtraction({
         file_name: fileName,
+        document_type: documentType,
         raw_extracted: data.result,
         final_submitted: finalData,
         corrections,
@@ -84,6 +89,7 @@ export default function ReviewPage() {
   const clearSession = () => {
     sessionStorage.removeItem(STORAGE_KEYS.RESULT);
     sessionStorage.removeItem(STORAGE_KEYS.FILE_NAME);
+    sessionStorage.removeItem(STORAGE_KEYS.DOCUMENT_TYPE);
   };
 
   const renderLoading = () => (
@@ -153,6 +159,7 @@ export default function ReviewPage() {
         <ExtractionForm
           data={data}
           fileName={fileName}
+          documentType={documentType || ""}
           onSubmit={handleSubmit}
           isSubmitting={status === "submitting"}
         />

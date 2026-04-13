@@ -1,9 +1,5 @@
 import axios, { type InternalAxiosRequestConfig } from "axios";
-import type {
-  AccuracyStats,
-  ExtractionRecord,
-  ExtractionResult,
-} from "./types";
+import type { AccuracyStats, ExtractionRecord, ExtractionResult } from "./types";
 
 const baseURL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
@@ -41,18 +37,14 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-export async function extractDocument(
-  file: File
-): Promise<ExtractionResult> {
+export async function extractDocument( file: File ): Promise<ExtractionResult> {
   const formData = new FormData();
   formData.append("file", file);
   const { data } = await api.post<ExtractionResult>("/extract", formData);
   return data;
 }
 
-export async function saveExtraction(
-  payload: Omit<ExtractionRecord, "id" | "created_at">
-): Promise<ExtractionRecord> {
+export async function saveExtraction( payload: Omit<ExtractionRecord, "id" | "created_at"> ): Promise<ExtractionRecord> {
   const { data } = await api.post<ExtractionRecord>("/save", payload);
   return data;
 }
@@ -66,5 +58,5 @@ export async function getRecentSubmissions(): Promise<ExtractionRecord[]> {
   const { data } = await api.get<ExtractionRecord[]>("/submissions", {
     params: { limit: 20 },
   });
-  return data;
+  return data; 
 }

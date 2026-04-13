@@ -51,17 +51,18 @@ function initialOpenSections(d: ExtractionResult): Record<string, boolean> {
 export interface ExtractionFormProps {
   data: {
     result: ExtractionResult;
-    document_type: string;
+    document_type: string; //
   };
   fileName: string;
+  documentType: string;
   onSubmit: (
     finalData: ExtractionResult,
     corrections: Record<string, { original: unknown; corrected: unknown }>
   ) => void;
-  isSubmitting: boolean;
+  isSubmitting: boolean;  
 }
 
-export function ExtractionForm({ data, fileName, onSubmit, isSubmitting }: ExtractionFormProps) {
+export function ExtractionForm({ data, fileName, documentType, onSubmit, isSubmitting }: ExtractionFormProps) {
   const [formData, setFormData] = useState<ExtractionResult>( () => structuredClone(data.result) );
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>( () => initialOpenSections(data.result) );
@@ -229,7 +230,7 @@ export function ExtractionForm({ data, fileName, onSubmit, isSubmitting }: Extra
             <span className="truncate font-medium text-gray-900" title={fileName}>
               {fileName}
             </span>
-            <Badge variant="info" label={formData.document_type} />
+            <Badge variant="info" label={documentType} />
           </div>
           <div className="flex flex-1 flex-wrap items-center justify-center gap-2">
             <Badge

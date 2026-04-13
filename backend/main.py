@@ -106,12 +106,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://healthcare-structured-data.vercel.app/"
-        "https://*.vercel.app"
+        "https://healthcare-structured-data.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
 

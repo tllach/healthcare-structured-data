@@ -24,27 +24,6 @@ function HomePageContent() {
   const [state, setState] = useState<PageState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
 
-  // #region agent log
-  useEffect(() => {
-    fetch("http://127.0.0.1:7355/ingest/7fcae4ed-8ac1-4c76-a5f1-4aa21e49778e", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Debug-Session-Id": "d84aa8",
-      },
-      body: JSON.stringify({
-        sessionId: "d84aa8",
-        location: "page.tsx:HomePage",
-        message: "Client Component mounted",
-        data: { useClientDirective: true },
-        timestamp: Date.now(),
-        runId: "post-fix",
-        hypothesisId: "H1",
-      }),
-    }).catch(() => {});
-  }, []);
-  // #endregion
-
   async function handleFileSelect(file: File) {
     setState("extracting");
     setErrorMessage("");

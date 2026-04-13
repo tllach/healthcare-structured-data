@@ -181,9 +181,7 @@ class DocumentExtractor:
             {"type": "text", "text": prompt},
         ]
 
-    async def extract(
-        self, file_content: bytes, media_type: str
-    ) -> tuple[ExtractionResult, str]:
+    async def extract( self, file_content: bytes, media_type: str) -> ExtractionResult:
         content_blocks = self._build_content_blocks(file_content, media_type)
 
         try:

@@ -154,6 +154,7 @@ class ExtractionRecordIn(BaseModel):
     corrections: dict[str, Any] = Field(default_factory=dict)
     file_url: str | None = None
     status: str = "submitted"
+    document_type: str = "unknown"
 
 
 class ExtractionRecordOut(BaseModel):
@@ -165,6 +166,7 @@ class ExtractionRecordOut(BaseModel):
     corrections: dict[str, Any]
     status: str = "pending"
     created_at: datetime
+    document_type: str = "unknown"
 
 
 class AccuracyStats(BaseModel):

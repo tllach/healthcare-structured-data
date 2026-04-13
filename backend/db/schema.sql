@@ -6,6 +6,7 @@ create table if not exists extractions (
   raw_extracted jsonb not null,
   final_submitted jsonb,
   corrections jsonb default '{}',
+  document_type text default 'unknown',
   status text default 'pending' check (status in ('pending', 'reviewed', 'submitted')),
   created_at timestamptz default now(),
   updated_at timestamptz default now()

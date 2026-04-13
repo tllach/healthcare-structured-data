@@ -181,6 +181,7 @@ def save_extraction( body: ExtractionRecordIn, supabase: Client = Depends(get_su
         "final_submitted": body.final_submitted,
         "corrections": body.corrections,
         "status": body.status,
+        "document_type": body.document_type,
     }
 
     try:
@@ -239,10 +240,7 @@ def accuracy_stats(supabase: Client = Depends(get_supabase)) -> list[AccuracySta
 
 
 @app.get("/submissions", response_model=list[ExtractionRecordOut])
-def list_submissions(
-    limit: int = 20,
-    supabase: Client = Depends(get_supabase),
-) -> list[ExtractionRecordOut]:
+def list_submissions( limit: int = 20, supabase: Client = Depends(get_supabase) ) -> list[ExtractionRecordOut]:
     limit = min(max(limit, 1), 100)
     try:
         res = (

@@ -174,3 +174,13 @@ class AccuracyStats(BaseModel):
     total: int
     corrected: int
     accuracy_pct: float
+
+
+class SectionAccuracyStats(BaseModel):
+    section: str
+    avg_model_confidence: float
+    total_submissions: int
+    correction_count: int
+    correction_rate: float
+    accuracy_rate: float
+    calibration_delta: float

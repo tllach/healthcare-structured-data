@@ -1,5 +1,19 @@
 import axios, { type InternalAxiosRequestConfig } from "axios";
-import type { AccuracyStats, ExtractionRecord, ExtractionResult } from "./types";
+import type {
+  AccuracyStats,
+  ExtractionRecord,
+  ExtractionResult,
+} from "./types";
+
+export interface SectionAccuracyStats {
+  section: string;
+  avg_model_confidence: number;
+  total_submissions: number;
+  correction_count: number;
+  correction_rate: number;
+  accuracy_rate: number;
+  calibration_delta: number;
+}
 
 const baseURL =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
@@ -51,6 +65,11 @@ export async function saveExtraction( payload: Omit<ExtractionRecord, "id" | "cr
 
 export async function getAccuracyStats(): Promise<AccuracyStats[]> {
   const { data } = await api.get<AccuracyStats[]>("/accuracy");
+  return data;
+}
+
+export async function getFullAccuracyStats(): Promise<SectionAccuracyStats[]> {
+  const { data } = await api.get<SectionAccuracyStats[]>("/accuracy/full");
   return data;
 }
 

@@ -17,6 +17,7 @@ from models import (
     ExtractionRecordIn,
     ExtractionRecordOut,
     ExtractionResponse,
+    SectionAccuracyStats,
 )
 from services.extractor import DocumentExtractor
 
@@ -239,6 +240,130 @@ def accuracy_stats(supabase: Client = Depends(get_supabase)) -> list[AccuracySta
     return [_to_accuracy_row(r) for r in rows if isinstance(r, dict)]
 
 
+SECTION_KEYS: tuple[str, ...] = (
+    "patient",
+    "insurance",
+    "requesting_provider",
+    "referring_provider",
+    "service_request",
+    "diagnoses",
+    "procedures",
+    "medications",
+    "lab_results",
+    "clinical_information",
+)
+
+
+def _final_has_section(final: dict[str, Any], section: str) -> bool:
+    if section not in final:
+        return False
+    return final.get(section) is not None
+
+
+def _corrections_touch_section(corrections: Any, section: str) -> bool:
+    if not isinstance(corrections, dict) or not corrections:
+        return False
+    prefix = f"{section}."
+    for k in corrections:
+        sk = str(k)
+        if sk == section or sk.startswith(prefix):
+            return True
+    return False
+
+
+def _confidence_value(raw: dict[str, Any], section: str) -> float:
+    conf = raw.get("confidence")
+    if not isinstance(conf, dict):
+        return 0.0
+    v = conf.get(section)
+    if v is None:
+        return 0.0
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _compute_section_accuracy_stats(rows: list[dict[str, Any]]) -> list[SectionAccuracyStats]:
+    completed: list[dict[str, Any]] = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        fs = r.get("final_submitted")
+        if fs is None:
+            continue
+        if not isinstance(fs, dict):
+            continue
+        completed.append(r)
+
+    if not completed:
+        return []
+
+    out: list[SectionAccuracyStats] = []
+    for section in SECTION_KEYS:
+        total = 0
+        correction_count = 0
+        conf_sum = 0.0
+
+        for r in completed:
+            final = r.get("final_submitted")
+            if not isinstance(final, dict):
+                continue
+            if not _final_has_section(final, section):
+                continue
+            total += 1
+            raw = r.get("raw_extracted")
+            if not isinstance(raw, dict):
+                raw = {}
+            conf_sum += _confidence_value(raw, section)
+            corr = r.get("corrections")
+            if _corrections_touch_section(corr, section):
+                correction_count += 1
+
+        if total == 0:
+            correction_rate = 0.0
+            accuracy_rate = 0.0
+            avg_model_confidence = 0.0
+        else:
+            correction_rate = correction_count / total
+            accuracy_rate = 1.0 - correction_rate
+            avg_model_confidence = conf_sum / total
+
+        calibration_delta = avg_model_confidence - accuracy_rate
+
+        out.append(
+            SectionAccuracyStats(
+                section=section,
+                avg_model_confidence=round(avg_model_confidence, 4),
+                total_submissions=total,
+                correction_count=correction_count,
+                correction_rate=round(correction_rate, 4),
+                accuracy_rate=round(accuracy_rate, 4),
+                calibration_delta=round(calibration_delta, 4),
+            )
+        )
+    return out
+
+
+@app.get("/accuracy/full", response_model=list[SectionAccuracyStats])
+def accuracy_full(supabase: Client = Depends(get_supabase)) -> list[SectionAccuracyStats]:
+    try:
+        res = supabase.table("extractions").select("*").execute()
+    except Exception as e:
+        logger.exception("Supabase extractions query failed for accuracy/full")
+        raise HTTPException(
+            status_code=502,
+            detail="Failed to load extractions for accuracy.",
+        ) from e
+
+    rows = getattr(res, "data", None) or []
+    if not isinstance(rows, list):
+        rows = []
+    return _compute_section_accuracy_stats(
+        [r for r in rows if isinstance(r, dict)]
+    )
+
+
 @app.get("/submissions", response_model=list[ExtractionRecordOut])
 def list_submissions( limit: int = 20, supabase: Client = Depends(get_supabase) ) -> list[ExtractionRecordOut]:
     limit = min(max(limit, 1), 100)
@@ -262,8 +387,15 @@ def list_submissions( limit: int = 20, supabase: Client = Depends(get_supabase) 
     for r in rows:
         if not isinstance(r, dict):
             continue
+        raw = r.get("raw_extracted")
+        doc_type = "unknown"
+        if isinstance(raw, dict):
+            dt = raw.get("document_type")
+            if isinstance(dt, str) and dt.strip():
+                doc_type = dt.strip()
+        merged = {**r, "document_type": doc_type}
         try:
-            out.append(ExtractionRecordOut.model_validate(r))
+            out.append(ExtractionRecordOut.model_validate(merged))
         except ValidationError:
             logger.warning("Skipping invalid extraction row: %s", r.get("id"))
     return out

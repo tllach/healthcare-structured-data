@@ -1,31 +1,40 @@
 "use client";
 
 import {
-  AlertCircle,
+  Activity,
+  AlertTriangle,
+  Brain,
   CheckCircle,
   FileText,
-  TrendingUp,
+  TrendingDown,
+  UserCheck,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useRouter } from "next/navigation";
 import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import { useRouter } from "next/navigation";
 
 import { Badge, Button } from "@/components/ui";
 import * as api from "@/lib/api";
-import type { AccuracyStats, ExtractionRecord } from "@/lib/types";
+import type { ExtractionRecord } from "@/lib/types";
 
 type LoadState = "loading" | "ready" | "error";
 
-const FIELD_LABELS: Record<string, string> = {
+const SECTION_LABELS: Record<string, string> = {
   patient: "Patient Information",
   insurance: "Insurance Details",
   requesting_provider: "Requesting Provider",
@@ -38,11 +47,28 @@ const FIELD_LABELS: Record<string, string> = {
   clinical_information: "Clinical Information",
 };
 
-function formatFieldKey(key: string): string {
+const SECTION_SHORT: Record<string, string> = {
+  patient: "Patient",
+  insurance: "Insurance",
+  requesting_provider: "Req. provider",
+  referring_provider: "Ref. provider",
+  service_request: "Service",
+  diagnoses: "Diagnoses",
+  procedures: "Procedures",
+  medications: "Medications",
+  lab_results: "Labs",
+  clinical_information: "Clinical",
+};
+
+function formatSectionName(section: string): string {
   return (
-    FIELD_LABELS[key] ??
-    key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    SECTION_LABELS[section] ??
+    section.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
   );
+}
+
+function formatSectionShort(section: string): string {
+  return SECTION_SHORT[section] ?? formatSectionName(section);
 }
 
 function formatSubmittedAt(iso: string): string {
@@ -75,31 +101,16 @@ function truncateFileName(name: string, max: number): string {
   return `${name.slice(0, max - 1)}…`;
 }
 
-function countCorrectionKeys(
+function correctionTopLevelKeys(
   corrections: Record<string, unknown> | undefined
-): number {
-  if (!corrections || typeof corrections !== "object") return 0;
-  return Object.keys(corrections).length;
-}
-
-function accuracyBarColor(pct: number): "green" | "yellow" | "red" {
-  if (pct >= 80) return "green";
-  if (pct >= 60) return "yellow";
-  return "red";
-}
-
-function accuracyBadgeVariant(
-  pct: number
-): "success" | "warning" | "error" {
-  if (pct >= 80) return "success";
-  if (pct >= 60) return "warning";
-  return "error";
-}
-
-function accuracyBadgeLabel(pct: number): string {
-  if (pct >= 80) return "Good";
-  if (pct >= 60) return "Review";
-  return "Poor";
+): string[] {
+  if (!corrections || typeof corrections !== "object") return [];
+  const tops = new Set<string>();
+  for (const k of Object.keys(corrections)) {
+    const dot = k.indexOf(".");
+    tops.add(dot === -1 ? k : k.slice(0, dot));
+  }
+  return Array.from(tops);
 }
 
 function statusBadgeVariant(
@@ -115,10 +126,32 @@ function statusBadgeVariant(
   }
 }
 
+function tierColor(
+  rate: number,
+  hi: number,
+  mid: number
+): "green" | "yellow" | "red" {
+  if (rate >= hi) return "green";
+  if (rate >= mid) return "yellow";
+  return "red";
+}
+
+function userAccuracyBarClass(rate: number): string {
+  if (rate >= 0.8) return "bg-green-500";
+  if (rate >= 0.6) return "bg-yellow-500";
+  return "bg-red-500";
+}
+
+function calibrationGapColor(gap: number): "green" | "yellow" | "red" {
+  if (gap < 0.1) return "green";
+  if (gap < 0.2) return "yellow";
+  return "red";
+}
+
 export default function AccuracyPage() {
   const router = useRouter();
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [stats, setStats] = useState<AccuracyStats[]>([]);
+  const [stats, setStats] = useState<api.SectionAccuracyStats[]>([]);
   const [recent, setRecent] = useState<ExtractionRecord[]>([]);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>("");
@@ -127,12 +160,12 @@ export default function AccuracyPage() {
     setLoadState("loading");
     setErrorMessage("");
     try {
-      const [accuracyRows, extraction] = await Promise.all([
-        api.getAccuracyStats(),
+      const [fullStats, submissions] = await Promise.all([
+        api.getFullAccuracyStats(),
         api.getRecentSubmissions(),
       ]);
-      setStats(accuracyRows);
-      setRecent(extraction);  
+      setStats(fullStats);
+      setRecent(submissions);
       setLastUpdated(new Date());
       setLoadState("ready");
     } catch (e) {
@@ -147,61 +180,48 @@ export default function AccuracyPage() {
     void load();
   }, [load]);
 
-  const sortedStats = useMemo(() => {
-    return [...stats].sort((a, b) => a.accuracy_pct - b.accuracy_pct);
+  const sortedTableStats = useMemo(() => {
+    return [...stats].sort((a, b) => a.accuracy_rate - b.accuracy_rate);
+  }, [stats]);
+
+  const chartData = useMemo(() => {
+    return [...stats]
+      .sort((a, b) => a.accuracy_rate - b.accuracy_rate)
+      .map((s) => ({
+        name: formatSectionName(s.section),
+        avg_model_confidence_pct: Math.round(s.avg_model_confidence * 100),
+        accuracy_rate_pct: Math.round(s.accuracy_rate * 100),
+      }));
   }, [stats]);
 
   const summary = useMemo(() => {
     if (stats.length === 0) {
       return {
         totalSubmissions: 0,
-        overallAccuracy: 0,
-        best: null as AccuracyStats | null,
-        worst: null as AccuracyStats | null,
+        avgModelConfidence: 0,
+        avgUserAccuracy: 0,
+        avgCalibrationGap: 0,
       };
     }
-
-    const sumTotal = stats.reduce((s, r) => s + r.total, 0);
-    const totalSubmissions =
-      stats.length > 0 ? Math.round(sumTotal / stats.length) : 0;
-
-    const weight = stats.reduce((s, r) => s + r.total, 0);
-    const overallAccuracy =
-      weight > 0
-        ? stats.reduce((s, r) => s + r.accuracy_pct * r.total, 0) / weight
-        : 0;
-
-    const best = stats.reduce((a, b) =>
-      a.accuracy_pct >= b.accuracy_pct ? a : b
-    );
-    const worst = stats.reduce((a, b) =>
-      a.accuracy_pct <= b.accuracy_pct ? a : b
-    );
-
-    return { totalSubmissions, overallAccuracy, best, worst };
+    const totalSubmissions = stats[0]?.total_submissions ?? 0;
+    const n = stats.length;
+    const avgModelConfidence =
+      stats.reduce((s, x) => s + x.avg_model_confidence, 0) / n;
+    const avgUserAccuracy =
+      stats.reduce((s, x) => s + x.accuracy_rate, 0) / n;
+    const avgCalibrationGap =
+      stats.reduce((s, x) => s + Math.abs(x.calibration_delta), 0) / n;
+    return {
+      totalSubmissions,
+      avgModelConfidence,
+      avgUserAccuracy,
+      avgCalibrationGap,
+    };
   }, [stats]);
 
-  const chartData = useMemo(() => {
-    return [...stats]
-      .sort((a, b) => b.accuracy_pct - a.accuracy_pct)
-      .map((s) => ({
-        name: formatFieldKey(s.field_key),
-        accuracy: s.accuracy_pct,
-        fill:
-          s.accuracy_pct >= 80
-            ? "#22c55e"
-            : s.accuracy_pct >= 60
-              ? "#eab308"
-              : "#ef4444",
-      }));
-  }, [stats]);
-
-  const overallIconColor =
-    summary.overallAccuracy >= 80
-      ? "green"
-      : summary.overallAccuracy >= 60
-        ? "yellow"
-        : "red";
+  const modelConfTier = tierColor(summary.avgModelConfidence, 0.8, 0.6);
+  const userAccTier = tierColor(summary.avgUserAccuracy, 0.8, 0.6);
+  const calGapTier = calibrationGapColor(summary.avgCalibrationGap);
 
   const isEmpty =
     loadState === "ready" && stats.length === 0 && recent.length === 0;
@@ -253,6 +273,10 @@ export default function AccuracyPage() {
                 </div>
               </div>
             ))}
+          </div>
+          <div>
+            <div className="mb-4 h-6 w-64 animate-pulse rounded bg-gray-200" />
+            <div className="h-[380px] animate-pulse rounded-xl border border-gray-200 bg-white" />
           </div>
           <div>
             <div className="mb-4 h-6 w-48 animate-pulse rounded bg-gray-200" />
@@ -340,18 +364,18 @@ export default function AccuracyPage() {
             <div className="flex gap-4">
               <div
                 className={`flex h-10 w-10 items-center justify-center rounded-lg p-2 ${
-                  overallIconColor === "green"
+                  modelConfTier === "green"
                     ? "bg-green-50"
-                    : overallIconColor === "yellow"
+                    : modelConfTier === "yellow"
                       ? "bg-yellow-50"
                       : "bg-red-50"
                 }`}
               >
-                <TrendingUp
+                <Brain
                   className={`h-5 w-5 ${
-                    overallIconColor === "green"
+                    modelConfTier === "green"
                       ? "text-green-600"
-                      : overallIconColor === "yellow"
+                      : modelConfTier === "yellow"
                         ? "text-yellow-600"
                         : "text-red-600"
                   }`}
@@ -362,53 +386,84 @@ export default function AccuracyPage() {
                 <div className="text-2xl font-bold text-gray-900">
                   {stats.length === 0
                     ? "—"
-                    : `${summary.overallAccuracy.toFixed(1)}%`}
+                    : `${Math.round(summary.avgModelConfidence * 100)}%`}
                 </div>
-                <div className="text-sm text-gray-500">Overall Accuracy</div>
+                <div className="text-sm text-gray-500">Avg Model Confidence</div>
+                <div className="text-xs text-gray-400">
+                  How confident AI reports being
+                </div>
               </div>
             </div>
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex gap-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50 p-2">
-                <CheckCircle className="h-5 w-5 text-green-600" aria-hidden />
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-lg p-2 ${
+                  userAccTier === "green"
+                    ? "bg-green-50"
+                    : userAccTier === "yellow"
+                      ? "bg-yellow-50"
+                      : "bg-red-50"
+                }`}
+              >
+                <UserCheck
+                  className={`h-5 w-5 ${
+                    userAccTier === "green"
+                      ? "text-green-600"
+                      : userAccTier === "yellow"
+                        ? "text-yellow-600"
+                        : "text-red-600"
+                  }`}
+                  aria-hidden
+                />
               </div>
-              <div className="min-w-0">
+              <div>
                 <div className="text-2xl font-bold text-gray-900">
-                  {summary.best
-                    ? `${summary.best.accuracy_pct.toFixed(0)}%`
-                    : "—"}
+                  {stats.length === 0
+                    ? "—"
+                    : `${Math.round(summary.avgUserAccuracy * 100)}%`}
                 </div>
-                <div className="text-sm text-gray-500">Most Reliable Field</div>
-                {summary.best ? (
-                  <div className="truncate text-xs text-gray-600">
-                    {formatFieldKey(summary.best.field_key)}
-                  </div>
-                ) : null}
+                <div className="text-sm text-gray-500">Avg User Accuracy</div>
+                <div className="text-xs text-gray-400">
+                  Fields accepted without changes
+                </div>
               </div>
             </div>
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex gap-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 p-2">
-                <AlertCircle className="h-5 w-5 text-red-600" aria-hidden />
+              <div
+                className={`flex h-10 w-10 items-center justify-center rounded-lg p-2 ${
+                  calGapTier === "green"
+                    ? "bg-green-50"
+                    : calGapTier === "yellow"
+                      ? "bg-yellow-50"
+                      : "bg-red-50"
+                }`}
+              >
+                <Activity
+                  className={`h-5 w-5 ${
+                    calGapTier === "green"
+                      ? "text-green-600"
+                      : calGapTier === "yellow"
+                        ? "text-yellow-600"
+                        : "text-red-600"
+                  }`}
+                  aria-hidden
+                />
               </div>
-              <div className="min-w-0">
+              <div>
                 <div className="text-2xl font-bold text-gray-900">
-                  {summary.worst
-                    ? `${summary.worst.accuracy_pct.toFixed(0)}%`
-                    : "—"}
+                  {stats.length === 0
+                    ? "—"
+                    : `${Math.round(summary.avgCalibrationGap * 100)}%`}
                 </div>
-                <div className="text-sm text-gray-500">
-                  Needs Most Attention
+                <div className="text-sm text-gray-500">Avg Calibration Gap</div>
+                <div className="text-xs text-gray-400">
+                  Difference between AI confidence and actual accuracy
                 </div>
-                {summary.worst ? (
-                  <div className="truncate text-xs text-gray-600">
-                    {formatFieldKey(summary.worst.field_key)}
-                  </div>
-                ) : null}
               </div>
             </div>
           </div>
@@ -416,35 +471,33 @@ export default function AccuracyPage() {
 
         {stats.length >= 2 ? (
           <section className="mb-10">
-            <h2 className="mb-4 font-semibold text-gray-900">
-              Accuracy by Section
+            <h2 className="mb-1 font-semibold text-gray-900">
+              AI Confidence vs User Accuracy by Section
             </h2>
+            <p className="mb-4 text-sm text-gray-500">
+              Compare what the model reports vs what users actually accepted
+            </p>
             <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="mb-4 flex flex-wrap gap-4 text-xs text-gray-500">
+              <div className="mb-4 flex flex-wrap gap-6 text-xs text-gray-500">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="text-blue-500" aria-hidden>
+                    ■
+                  </span>
+                  AI Confidence
+                </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="text-green-500" aria-hidden>
-                    ●
+                    ■
                   </span>
-                  ≥80% Good
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="text-yellow-500" aria-hidden>
-                    ●
-                  </span>
-                  60–79% Review
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="text-red-500" aria-hidden>
-                    ●
-                  </span>
-                  &lt;60% Poor
+                  User Accuracy
                 </span>
               </div>
-              <ResponsiveContainer width="100%" height={320}>
+              <ResponsiveContainer width="100%" height={380}>
                 <BarChart
                   data={chartData}
                   layout="vertical"
-                  margin={{ top: 4, right: 16, left: 0, bottom: 4 }}
+                  margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
+                  barGap={4}
                 >
                   <CartesianGrid
                     strokeDasharray="3 3"
@@ -459,24 +512,30 @@ export default function AccuracyPage() {
                   <YAxis
                     type="category"
                     dataKey="name"
-                    width={160}
-                    tick={{ fontSize: 12, fill: "#6b7280" }}
+                    width={170}
+                    tick={{ fontSize: 12 }}
                   />
                   <Tooltip
-                    formatter={(value) => [
+                    formatter={(value, name) => [
                       `${Number(value)}%`,
-                      "Accuracy",
+                      String(name),
                     ]}
                   />
+                  <Legend verticalAlign="top" />
                   <Bar
-                    dataKey="accuracy"
+                    dataKey="avg_model_confidence_pct"
+                    name="AI Confidence"
+                    fill="#3b82f6"
+                    barSize={14}
                     radius={[0, 4, 4, 0]}
-                    barSize={20}
-                  >
-                    {chartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Bar>
+                  />
+                  <Bar
+                    dataKey="accuracy_rate_pct"
+                    name="User Accuracy"
+                    fill="#22c55e"
+                    barSize={14}
+                    radius={[0, 4, 4, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -484,66 +543,96 @@ export default function AccuracyPage() {
         ) : null}
 
         <section className="mb-10">
-          <h2 className="mb-4 font-semibold text-gray-900">
-            Accuracy by Field
-          </h2>
+          <h2 className="mb-4 font-semibold text-gray-900">Section Breakdown</h2>
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-left text-sm">
+              <table className="w-full min-w-[720px] text-left text-sm">
                 <thead>
                   <tr className="bg-gray-50 text-xs font-medium uppercase text-gray-500">
-                    <th className="px-4 py-3">Field</th>
-                    <th className="px-4 py-3">Total Extractions</th>
-                    <th className="px-4 py-3">Auto-filled Correct</th>
-                    <th className="px-4 py-3">Corrected by User</th>
-                    <th className="px-4 py-3">Accuracy %</th>
+                    <th className="px-4 py-3">Section</th>
+                    <th className="px-4 py-3">AI Confidence</th>
+                    <th className="px-4 py-3">User Accuracy</th>
+                    <th className="px-4 py-3">Corrections</th>
+                    <th className="px-4 py-3">Calibration</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedStats.map((row) => {
-                    const autoCorrect = row.total - row.corrected;
-                    const bar = accuracyBarColor(row.accuracy_pct);
+                  {sortedTableStats.map((row) => {
+                    const aiPct = Math.round(row.avg_model_confidence * 100);
+                    const uaPct = Math.round(row.accuracy_rate * 100);
+                    const d = row.calibration_delta;
+                    const dPct = Math.round(d * 100);
+                    let calNode: ReactNode;
+                    if (d > 0.15) {
+                      calNode = (
+                        <span
+                          className="inline-flex cursor-default items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800"
+                          title="AI reports higher confidence than its actual accuracy warrants"
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                          Overconfident +{dPct}%
+                        </span>
+                      );
+                    } else if (d < -0.15) {
+                      calNode = (
+                        <span
+                          className="inline-flex cursor-default items-center gap-1 rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-900"
+                          title="AI is more accurate than its confidence scores suggest"
+                        >
+                          <TrendingDown className="h-3.5 w-3.5 shrink-0" />
+                          Underconfident {dPct}%
+                        </span>
+                      );
+                    } else {
+                      calNode = (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                          <CheckCircle className="h-3.5 w-3.5 shrink-0" />
+                          Well calibrated
+                        </span>
+                      );
+                    }
                     return (
                       <tr
-                        key={row.field_key}
+                        key={row.section}
                         className="border-t border-gray-100 hover:bg-gray-50"
                       >
                         <td className="px-4 py-3 font-medium text-gray-900">
-                          {formatFieldKey(row.field_key)}
-                        </td>
-                        <td className="px-4 py-3 text-gray-700">{row.total}</td>
-                        <td className="px-4 py-3 text-gray-700">{autoCorrect}</td>
-                        <td className="px-4 py-3 text-gray-700">
-                          {row.corrected}
+                          {formatSectionName(row.section)}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="font-bold text-gray-900">
-                              {row.accuracy_pct.toFixed(1)}%
+                              {aiPct}%
                             </span>
-                            <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-200">
+                            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-blue-100">
                               <div
-                                className={`h-full rounded-full ${
-                                  bar === "green"
-                                    ? "bg-green-500"
-                                    : bar === "yellow"
-                                      ? "bg-yellow-500"
-                                      : "bg-red-500"
-                                }`}
+                                className="h-full rounded-full bg-blue-500"
                                 style={{
-                                  width: `${Math.min(
-                                    100,
-                                    Math.max(0, row.accuracy_pct)
-                                  )}%`,
+                                  width: `${Math.min(100, Math.max(0, aiPct))}%`,
                                 }}
                               />
                             </div>
-                            <Badge
-                              variant={accuracyBadgeVariant(row.accuracy_pct)}
-                              label={accuracyBadgeLabel(row.accuracy_pct)}
-                            />
                           </div>
                         </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-gray-900">
+                              {uaPct}%
+                            </span>
+                            <div className="h-1.5 w-20 overflow-hidden rounded-full bg-gray-100">
+                              <div
+                                className={`h-full rounded-full ${userAccuracyBarClass(row.accuracy_rate)}`}
+                                style={{
+                                  width: `${Math.min(100, Math.max(0, uaPct))}%`,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                          {row.correction_count} of {row.total_submissions}
+                        </td>
+                        <td className="px-4 py-3">{calNode}</td>
                       </tr>
                     );
                   })}
@@ -563,7 +652,6 @@ export default function AccuracyPage() {
                 <thead>
                   <tr className="bg-gray-50 text-xs font-medium uppercase text-gray-500">
                     <th className="px-4 py-3">Document</th>
-                    <th className="px-4 py-3">Type</th>
                     <th className="px-4 py-3">Submitted</th>
                     <th className="px-4 py-3">Fields Corrected</th>
                     <th className="px-4 py-3">Status</th>
@@ -571,15 +659,11 @@ export default function AccuracyPage() {
                 </thead>
                 <tbody>
                   {recent.map((rec) => {
-                    console.log(rec);
-                    const docType = rec.document_type;
-                    const n = countCorrectionKeys(
+                    const keys = correctionTopLevelKeys(
                       rec.corrections as Record<string, unknown>
                     );
-                    const corrVariant =
-                      n === 0 ? "success" : n <= 3 ? "warning" : "error";
-                    const corrLabel =
-                      n === 0 ? "No corrections" : `${n} corrections`;
+                    const shown = keys.slice(0, 3);
+                    const more = keys.length - shown.length;
                     return (
                       <tr
                         key={rec.id}
@@ -591,14 +675,29 @@ export default function AccuracyPage() {
                         >
                           {truncateFileName(rec.file_name, 30)}
                         </td>
-                        <td className="px-4 py-3">
-                          <Badge variant="info" label={docType} />
-                        </td>
                         <td className="px-4 py-3 text-gray-700">
                           {formatSubmittedAt(rec.created_at)}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant={corrVariant} label={corrLabel} />
+                          {keys.length === 0 ? (
+                            <span className="text-sm text-gray-400">—</span>
+                          ) : (
+                            <div className="flex flex-wrap items-center gap-1">
+                              {shown.map((k) => (
+                                <span
+                                  key={k}
+                                  className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
+                                >
+                                  {formatSectionShort(k)}
+                                </span>
+                              ))}
+                              {more > 0 ? (
+                                <span className="text-xs text-gray-500">
+                                  +{more} more
+                                </span>
+                              ) : null}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <Badge
